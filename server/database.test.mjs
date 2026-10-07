@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, unlink, rmdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openDatabase, getDashboard, createJob, deleteJob, moveJob } from './database.mjs'
+import { openDatabase, getDashboard, createJob, deleteJob, moveJob, updateJob } from './database.mjs'
 import { createApp } from './app.mjs'
 
 const input = { fileName: 'suporte_camera.gcode', printer: 'Ender 3 Pro', hours: 1, minutes: 30 }
@@ -122,6 +122,63 @@ test('mover rejeita status inválido, trabalho inexistente e impressora ausente'
   assert.deepEqual(getDashboard(db), getDashboard(db))
 })
 
+test('editar um trabalho na fila atualiza nome, filamento, peso e prioridade sem recalcular horário à toa', (t) => {
+  const db = memory(t)
+  const before = getDashboard(db).queuedJobs.find((j) => j.id === 'q1')
+  const dashboard = updateJob(db, 'q1', {
+    fileName: 'engrenagem_v3.gcode', filament: 'PETG CF', weight: 135, priority: 'AGENDADA',
+  })
+  const after = dashboard.queuedJobs.find((j) => j.id === 'q1')
+  assert.equal(after.fileName, 'engrenagem_v3.gcode')
+  assert.equal(after.filament, 'PETG CF')
+  assert.equal(after.weight, '135g')
+  assert.equal(after.priority, 'AGENDADA')
+  // Nem impressora nem duração mudaram: a reserva original continua intacta.
+  assert.equal(after.scheduledSlot, before.scheduledSlot)
+  assert.equal(dashboard.printerTimelines.flatMap((p) => p.blocks).find((b) => b.id === 'q1').fileName, 'engrenagem_v3.gcode')
+})
+
+test('editar impressora ou duração de um trabalho na fila recalcula a reserva no banco', (t) => {
+  const db = memory(t)
+  const dashboard = updateJob(db, 'q1', { printer: 'CR-10 Max', hours: 2, minutes: 0 })
+  const after = dashboard.queuedJobs.find((j) => j.id === 'q1')
+  assert.equal(after.printer, 'CR-10 Max')
+  assert.equal(after.estimatedTime, '02h 00m')
+  const block = dashboard.printerTimelines.find((p) => p.name === 'CR-10 Max').blocks.find((b) => b.id === 'q1')
+  assert.ok(block)
+  assert.equal(block.endHour - block.startHour, 2)
+  assert.ok(!dashboard.printerTimelines.find((p) => p.name === 'Ender 3 V2').blocks.some((b) => b.id === 'q1'))
+})
+
+test('editar um trabalho em produção atualiza progresso, tempo decorrido e temperaturas', (t) => {
+  const db = memory(t)
+  const dashboard = updateJob(db, 'p2', { progress: 90, elapsedHours: 4, elapsedMinutes: 30, nozzleTemp: 215, bedTemp: 70 })
+  const after = dashboard.producingJobs.find((j) => j.id === 'p2')
+  assert.equal(after.progress, 90)
+  assert.equal(after.elapsedTime, '04h 30m decorridos')
+  assert.equal(after.nozzleTemp, 215)
+  assert.equal(after.bedTemp, 70)
+})
+
+test('editar um trabalho em verificação atualiza o status de retirada', (t) => {
+  const db = memory(t)
+  const dashboard = updateJob(db, 'v1', { verifyStatus: 'RETIRADA_PRONTA' })
+  assert.equal(dashboard.verifyJobs.find((j) => j.id === 'v1').verifyStatus, 'RETIRADA_PRONTA')
+})
+
+test('editar rejeita valores inválidos sem alterar o banco', (t) => {
+  const db = memory(t)
+  const before = getDashboard(db)
+  for (const invalid of [
+    { fileName: '   ' }, { weight: -5 }, { priority: 'URGENTE' }, { progress: 101 },
+    { nozzleTemp: 'quente' }, { verifyStatus: 'PRONTO' }, { printer: 'Inexistente' }, { hours: 0, minutes: 0 },
+  ]) {
+    assert.throws(() => updateJob(db, 'q1', invalid), { status: 400 })
+  }
+  assert.throws(() => updateJob(db, 'inexistente', { fileName: 'novo.gcode' }), { status: 404 })
+  assert.deepEqual(getDashboard(db), before)
+})
+
 test('API HTTP integra leitura, cadastro, exclusão e respostas de erro', async (t) => {
   const db = memory(t)
   const app = createApp(db, { staticDir: join(tmpdir(), 'printing-missing-dist-' + Date.now()) })
@@ -141,6 +198,11 @@ test('API HTTP integra leitura, cadastro, exclusão e respostas de erro', async 
   assert.ok((await moved.json()).producingJobs.some((j) => j.id === created.id))
   assert.equal((await patch(created.id, { status: 'INVALIDO' })).status, 400)
   assert.equal((await patch('inexistente', { status: 'PRODUCING' })).status, 404)
+  const edited = await patch(created.id, { fileName: 'editado.gcode', progress: 55 })
+  assert.equal(edited.status, 200)
+  const editedJob = (await edited.json()).producingJobs.find((j) => j.id === created.id)
+  assert.equal(editedJob.fileName, 'editado.gcode')
+  assert.equal(editedJob.progress, 55)
 
   const deleted = await fetch(url + '/api/jobs/' + created.id, { method: 'DELETE' })
   assert.equal(deleted.status, 200)

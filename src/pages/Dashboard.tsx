@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { QueueBoard } from '@/components/queue/QueueBoard'
 import { NewPrintModal } from '@/components/queue/NewPrintModal'
+import { EditJobModal, type EditTarget } from '@/components/queue/EditJobModal'
 import { Timeline } from '@/components/timeline/Timeline'
-import { addPrint, loadDashboard, moveJob, removePrint } from '@/lib/api'
-import type { DashboardData, JobStatus, NewPrintInput } from '@/types'
+import { addPrint, editJob, loadDashboard, moveJob, removePrint } from '@/lib/api'
+import type { DashboardData, JobEditInput, JobStatus, NewPrintInput } from '@/types'
 
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null)
   const [saving, setSaving] = useState(false)
   const mutationPending = useRef(false)
   const [reload, setReload] = useState(0)
@@ -60,6 +62,20 @@ export function Dashboard() {
     finally { mutationPending.current = false; setSaving(false) }
   }
 
+  async function handleEdit(id: string, input: JobEditInput) {
+    if (mutationPending.current) return
+    mutationPending.current = true
+    setSaving(true)
+    setError(null)
+    try {
+      setData(await editJob(id, input))
+      setEditTarget(null)
+    } finally {
+      mutationPending.current = false
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="min-h-svh bg-zinc-950">
       <Header printersOnline={data?.printersOnline ?? 0} />
@@ -82,6 +98,9 @@ export function Dashboard() {
             onDeleteProducing={handleDelete}
             onDeleteVerify={handleDelete}
             onMove={handleMove}
+            onEditQueued={(job) => setEditTarget({ kind: 'QUEUED', job })}
+            onEditProducing={(job) => setEditTarget({ kind: 'PRODUCING', job })}
+            onEditVerify={(job) => setEditTarget({ kind: 'VERIFY', job })}
             disabled={saving}
           />
           <Timeline printers={data.printerTimelines} />
@@ -92,6 +111,13 @@ export function Dashboard() {
         printers={data.printerTimelines}
         onClose={() => { if (!mutationPending.current) setIsModalOpen(false) }}
         onSubmit={handleNewPrint}
+        saving={saving}
+      />}
+      {data && <EditJobModal
+        target={editTarget}
+        printers={data.printerTimelines}
+        onClose={() => { if (!mutationPending.current) setEditTarget(null) }}
+        onSubmit={handleEdit}
         saving={saving}
       />}
     </div>

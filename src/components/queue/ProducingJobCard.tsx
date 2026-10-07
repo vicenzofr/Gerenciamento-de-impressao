@@ -1,25 +1,29 @@
 import { PrinterIcon } from '@/components/icons'
 import { DeleteButton } from './DeleteButton'
+import { EditButton } from './EditButton'
 import { dragJobProps } from '@/lib/dnd'
 import type { ProducingJob } from '@/types'
 
 export function ProducingJobCard({
   job,
   onDelete,
+  onEdit,
 }: {
   job: ProducingJob
   onDelete?: () => void
+  onEdit?: () => void
 }) {
   return (
     <div
       {...dragJobProps(job.id, 'PRODUCING')}
       className="relative cursor-grab rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 active:cursor-grabbing"
     >
+      {onEdit ? <EditButton onClick={onEdit} label={`Editar ${job.fileName}`} /> : null}
       {onDelete ? (
         <DeleteButton onClick={onDelete} label={`Remover ${job.fileName}`} itemName={job.fileName} />
       ) : null}
 
-      <p className="truncate pr-6 text-sm font-medium text-zinc-100">{job.fileName}</p>
+      <p className="truncate pr-14 text-sm font-medium text-zinc-100">{job.fileName}</p>
       <p className="mt-0.5 flex items-center gap-1 text-xs text-orange-400">
         <PrinterIcon className="h-3.5 w-3.5" />
         {job.printerName}

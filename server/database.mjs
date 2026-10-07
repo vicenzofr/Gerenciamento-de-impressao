@@ -108,35 +108,154 @@ export function createJob(db, input) {
 }
 
 const statuses = ['QUEUED', 'PRODUCING', 'VERIFY']
+const priorities = ['ALTA', 'MEDIA', 'AGENDADA']
+const verifyStatuses = ['INSPECAO_PENDENTE', 'RETIRADA_PRONTA']
 const defaultNozzleTemp = 200
 const defaultBedTemp = 60
 
-export function moveJob(db, id, status) {
-  if (!statuses.includes(status)) throw new ApiError(400, 'Status inválido.')
+function validDuration(hours, minutes) {
+  return Number.isInteger(hours) && hours >= 0 && hours <= 99 &&
+    Number.isInteger(minutes) && minutes >= 0 && minutes <= 59
+}
+
+/**
+ * Updates any subset of a job's fields (name, printer, duration, filament,
+ * weight, priority, production progress/temps, verify status) and/or moves
+ * it between stages. Only the fields present in `input` are touched; a
+ * printer or duration change on a job with a timeline slot always triggers
+ * a fresh server-side reschedule, same rule as createJob.
+ */
+export function updateJob(db, id, input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(400, 'Dados inválidos.')
 
   db.exec('BEGIN IMMEDIATE')
   try {
     const job = db.prepare('SELECT * FROM print_jobs WHERE id = ?').get(id)
     if (!job) throw new ApiError(404, 'Trabalho não encontrado. Atualize a página.')
-    if (job.printer_id == null && status !== 'QUEUED')
+
+    const status = input.status === undefined ? job.status : input.status
+    if (!statuses.includes(status)) throw new ApiError(400, 'Status inválido.')
+
+    let fileName = job.file_name
+    if (input.fileName !== undefined) {
+      if (typeof input.fileName !== 'string' || !input.fileName.trim() || input.fileName.trim().length > 255)
+        throw new ApiError(400, 'Informe um nome de arquivo de até 255 caracteres.')
+      fileName = input.fileName.trim()
+    }
+
+    let printerId = job.printer_id
+    let reschedule = false
+    if (input.printer !== undefined) {
+      const selected = db.prepare('SELECT id FROM printers WHERE name = ?').get(input.printer)
+      if (!selected) throw new ApiError(400, 'Impressora não encontrada.')
+      if (selected.id !== printerId) { printerId = selected.id; reschedule = true }
+    }
+    if (printerId == null && status !== 'QUEUED')
       throw new ApiError(400, 'Defina uma impressora antes de mover para produção ou verificação.')
 
+    let durationMinutes = job.duration_minutes
+    if (input.hours !== undefined || input.minutes !== undefined) {
+      const hours = input.hours ?? Math.floor(job.duration_minutes / 60)
+      const minutes = input.minutes ?? job.duration_minutes % 60
+      if (!validDuration(hours, minutes) || hours * 60 + minutes === 0)
+        throw new ApiError(400, 'Informe um tempo válido: 0 a 99 horas e 0 a 59 minutos, maior que zero.')
+      const next = hours * 60 + minutes
+      if (next !== durationMinutes) { durationMinutes = next; reschedule = true }
+    }
+
+    let filament = job.filament
+    if (input.filament !== undefined) {
+      filament = input.filament === null || input.filament === '' ? null : String(input.filament).trim().slice(0, 255)
+    }
+
+    let weight = job.weight_grams
+    if (input.weight !== undefined) {
+      if (input.weight === null || input.weight === '') weight = null
+      else {
+        if (!Number.isInteger(input.weight) || input.weight <= 0) throw new ApiError(400, 'Peso inválido.')
+        weight = input.weight
+      }
+    }
+
+    let priority = job.priority
+    if (input.priority !== undefined) {
+      if (!priorities.includes(input.priority)) throw new ApiError(400, 'Prioridade inválida.')
+      priority = input.priority
+    }
+
+    let progress = job.progress
+    if (input.progress !== undefined) {
+      if (!Number.isInteger(input.progress) || input.progress < 0 || input.progress > 100)
+        throw new ApiError(400, 'Progresso inválido: use um número entre 0 e 100.')
+      progress = input.progress
+    }
+
+    let elapsedMinutes = job.elapsed_minutes
+    if (input.elapsedHours !== undefined || input.elapsedMinutes !== undefined) {
+      const eh = input.elapsedHours ?? Math.floor((job.elapsed_minutes ?? 0) / 60)
+      const em = input.elapsedMinutes ?? (job.elapsed_minutes ?? 0) % 60
+      if (!validDuration(eh, em)) throw new ApiError(400, 'Tempo decorrido inválido.')
+      elapsedMinutes = eh * 60 + em
+    }
+
+    let nozzleTemp = job.nozzle_temp
+    if (input.nozzleTemp !== undefined) {
+      if (typeof input.nozzleTemp !== 'number' || !Number.isFinite(input.nozzleTemp) || input.nozzleTemp < 0 || input.nozzleTemp > 500)
+        throw new ApiError(400, 'Temperatura do bico inválida.')
+      nozzleTemp = input.nozzleTemp
+    }
+
+    let bedTemp = job.bed_temp
+    if (input.bedTemp !== undefined) {
+      if (typeof input.bedTemp !== 'number' || !Number.isFinite(input.bedTemp) || input.bedTemp < 0 || input.bedTemp > 200)
+        throw new ApiError(400, 'Temperatura da mesa inválida.')
+      bedTemp = input.bedTemp
+    }
+
+    let verifyStatus = job.verify_status
+    if (input.verifyStatus !== undefined) {
+      if (!verifyStatuses.includes(input.verifyStatus)) throw new ApiError(400, 'Status de verificação inválido.')
+      verifyStatus = input.verifyStatus
+    }
+
+    // Status-driven defaults, same ones createJob/moveJob rely on, only
+    // filled when the field is still empty.
     if (status === 'PRODUCING') {
-      db.prepare(
-        'UPDATE print_jobs SET status = ?, progress = COALESCE(progress, 0), elapsed_minutes = COALESCE(elapsed_minutes, 0), ' +
-        'nozzle_temp = COALESCE(nozzle_temp, ?), bed_temp = COALESCE(bed_temp, ?) WHERE id = ?'
-      ).run(status, defaultNozzleTemp, defaultBedTemp, id)
-    } else if (status === 'VERIFY') {
-      db.prepare("UPDATE print_jobs SET status = ?, verify_status = COALESCE(verify_status, 'INSPECAO_PENDENTE') WHERE id = ?")
-        .run(status, id)
-    } else {
-      db.prepare('UPDATE print_jobs SET status = ? WHERE id = ?').run(status, id)
+      if (progress == null) progress = 0
+      if (elapsedMinutes == null) elapsedMinutes = 0
+      if (nozzleTemp == null) nozzleTemp = defaultNozzleTemp
+      if (bedTemp == null) bedTemp = defaultBedTemp
+    }
+    if (status === 'VERIFY' && verifyStatus == null) verifyStatus = 'INSPECAO_PENDENTE'
+
+    db.prepare(
+      'UPDATE print_jobs SET file_name = ?, printer_id = ?, status = ?, duration_minutes = ?, filament = ?, weight_grams = ?, ' +
+      'priority = ?, progress = ?, elapsed_minutes = ?, nozzle_temp = ?, bed_temp = ?, verify_status = ? WHERE id = ?'
+    ).run(fileName, printerId, status, durationMinutes, filament, weight, priority, progress, elapsedMinutes, nozzleTemp, bedTemp, verifyStatus, id)
+
+    if (reschedule) {
+      // Impressora ou duração mudou: descarta a reserva antiga e recalcula
+      // com o estado atual do banco, nunca confiando em sugestão do navegador.
+      db.prepare('DELETE FROM timeline_blocks WHERE job_id = ?').run(id)
+      if (printerId != null) {
+        const blocks = db.prepare('SELECT * FROM timeline_blocks WHERE printer_id = ? ORDER BY start_minute').all(printerId)
+        const slot = bestSlot(blocks, durationMinutes)
+        if (slot) db.prepare('INSERT INTO timeline_blocks (id, printer_id, job_id, label, start_minute, end_minute, color) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .run(randomUUID(), printerId, id, fileName, slot.start, slot.end, colors[blocks.length % colors.length])
+      }
+    } else if (input.fileName !== undefined) {
+      // Mantém o rótulo da reserva existente sincronizado com o novo nome.
+      db.prepare('UPDATE timeline_blocks SET label = ? WHERE job_id = ?').run(fileName, id)
     }
 
     const dashboard = getDashboard(db)
     db.exec('COMMIT')
     return dashboard
   } catch (error) { db.exec('ROLLBACK'); throw error }
+}
+
+export function moveJob(db, id, status) {
+  return updateJob(db, id, { status })
 }
 
 export function deleteJob(db, id) {

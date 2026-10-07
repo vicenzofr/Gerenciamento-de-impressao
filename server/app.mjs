@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { resolve, extname, sep } from 'node:path'
-import { ApiError, createJob, deleteJob, getDashboard, moveJob } from './database.mjs'
+import { ApiError, createJob, deleteJob, getDashboard, updateJob } from './database.mjs'
 
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' }
 function json(res, status, body) {
@@ -35,7 +35,7 @@ export function createApp(db, { staticDir = resolve('dist') } = {}) {
       const match = /^\/api\/jobs\/([^/]+)$/.exec(url.pathname)
       if (match && req.method === 'DELETE') return json(res, 200, deleteJob(db, decodeURIComponent(match[1])))
       if (match && req.method === 'PATCH')
-        return json(res, 200, moveJob(db, decodeURIComponent(match[1]), (await readJson(req))?.status))
+        return json(res, 200, updateJob(db, decodeURIComponent(match[1]), await readJson(req)))
       if (url.pathname.startsWith('/api/')) throw new ApiError(404, 'Rota não encontrada.')
       if (req.method !== 'GET' && req.method !== 'HEAD') throw new ApiError(405, 'Método não permitido.')
       const file = resolve(base, '.' + decodeURIComponent(url.pathname))

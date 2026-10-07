@@ -71,3 +71,20 @@ export interface DashboardData {
   verifyJobs: VerifyJob[]
   printerTimelines: PrinterTimeline[]
 }
+
+/** Partial update sent to PATCH /api/jobs/:id. Only set fields are changed. */
+export interface JobEditInput {
+  fileName?: string
+  printer?: string
+  hours?: number
+  minutes?: number
+  filament?: string | null
+  weight?: number | null
+  priority?: Priority
+  progress?: number
+  elapsedHours?: number
+  elapsedMinutes?: number
+  nozzleTemp?: number
+  bedTemp?: number
+  verifyStatus?: VerifyStatus
+}

@@ -15,6 +15,9 @@ interface QueueBoardProps {
   onDeleteProducing?: (id: string) => void
   onDeleteVerify?: (id: string) => void
   onMove?: (id: string, status: JobStatus) => void
+  onEditQueued?: (job: QueuedJob) => void
+  onEditProducing?: (job: ProducingJob) => void
+  onEditVerify?: (job: VerifyJob) => void
 }
 
 export function QueueBoard({
@@ -27,6 +30,9 @@ export function QueueBoard({
   onDeleteProducing,
   onDeleteVerify,
   onMove,
+  onEditQueued,
+  onEditProducing,
+  onEditVerify,
 }: QueueBoardProps) {
   return (
     <section>
@@ -62,6 +68,7 @@ export function QueueBoard({
               key={job.id}
               job={job}
               onDelete={onDeleteQueued ? () => onDeleteQueued(job.id) : undefined}
+              onEdit={onEditQueued ? () => onEditQueued(job) : undefined}
             />
           ))}
         </QueueColumn>
@@ -78,6 +85,7 @@ export function QueueBoard({
               key={job.id}
               job={job}
               onDelete={onDeleteProducing ? () => onDeleteProducing(job.id) : undefined}
+              onEdit={onEditProducing ? () => onEditProducing(job) : undefined}
             />
           ))}
         </QueueColumn>
@@ -94,6 +102,7 @@ export function QueueBoard({
               key={job.id}
               job={job}
               onDelete={onDeleteVerify ? () => onDeleteVerify(job.id) : undefined}
+              onEdit={onEditVerify ? () => onEditVerify(job) : undefined}
             />
           ))}
         </QueueColumn>
