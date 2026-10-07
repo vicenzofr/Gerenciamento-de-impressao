@@ -1,5 +1,7 @@
 export type Priority = 'ALTA' | 'MEDIA' | 'AGENDADA'
 
+export type JobStatus = 'QUEUED' | 'PRODUCING' | 'VERIFY'
+
 export interface QueuedJob {
   id: string
   fileName: string

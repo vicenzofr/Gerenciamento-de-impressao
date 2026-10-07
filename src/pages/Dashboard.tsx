@@ -3,8 +3,8 @@ import { Header } from '@/components/layout/Header'
 import { QueueBoard } from '@/components/queue/QueueBoard'
 import { NewPrintModal } from '@/components/queue/NewPrintModal'
 import { Timeline } from '@/components/timeline/Timeline'
-import { addPrint, loadDashboard, removePrint } from '@/lib/api'
-import type { DashboardData, NewPrintInput } from '@/types'
+import { addPrint, loadDashboard, moveJob, removePrint } from '@/lib/api'
+import type { DashboardData, JobStatus, NewPrintInput } from '@/types'
 
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
@@ -50,6 +50,16 @@ export function Dashboard() {
     finally { mutationPending.current = false; setSaving(false) }
   }
 
+  async function handleMove(id: string, status: JobStatus) {
+    if (mutationPending.current) return
+    mutationPending.current = true
+    setSaving(true)
+    setError(null)
+    try { setData(await moveJob(id, status)) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível mover o trabalho.') }
+    finally { mutationPending.current = false; setSaving(false) }
+  }
+
   return (
     <div className="min-h-svh bg-zinc-950">
       <Header printersOnline={data?.printersOnline ?? 0} />
@@ -71,6 +81,7 @@ export function Dashboard() {
             onDeleteQueued={handleDelete}
             onDeleteProducing={handleDelete}
             onDeleteVerify={handleDelete}
+            onMove={handleMove}
             disabled={saving}
           />
           <Timeline printers={data.printerTimelines} />

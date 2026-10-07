@@ -1,6 +1,7 @@
 import { CheckCircleIcon } from '@/components/icons'
 import { VerifyStatusBadge } from './VerifyStatusBadge'
 import { DeleteButton } from './DeleteButton'
+import { dragJobProps } from '@/lib/dnd'
 import type { VerifyJob } from '@/types'
 
 export function VerifyJobCard({
@@ -11,7 +12,10 @@ export function VerifyJobCard({
   onDelete?: () => void
 }) {
   return (
-    <div className="relative rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+    <div
+      {...dragJobProps(job.id, 'VERIFY')}
+      className="relative cursor-grab rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 active:cursor-grabbing"
+    >
       {onDelete ? (
         <DeleteButton onClick={onDelete} label={`Remover ${job.fileName}`} itemName={job.fileName} />
       ) : null}

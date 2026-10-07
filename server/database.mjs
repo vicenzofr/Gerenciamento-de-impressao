@@ -107,6 +107,38 @@ export function createJob(db, input) {
   } catch (error) { db.exec('ROLLBACK'); throw error }
 }
 
+const statuses = ['QUEUED', 'PRODUCING', 'VERIFY']
+const defaultNozzleTemp = 200
+const defaultBedTemp = 60
+
+export function moveJob(db, id, status) {
+  if (!statuses.includes(status)) throw new ApiError(400, 'Status inválido.')
+
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const job = db.prepare('SELECT * FROM print_jobs WHERE id = ?').get(id)
+    if (!job) throw new ApiError(404, 'Trabalho não encontrado. Atualize a página.')
+    if (job.printer_id == null && status !== 'QUEUED')
+      throw new ApiError(400, 'Defina uma impressora antes de mover para produção ou verificação.')
+
+    if (status === 'PRODUCING') {
+      db.prepare(
+        'UPDATE print_jobs SET status = ?, progress = COALESCE(progress, 0), elapsed_minutes = COALESCE(elapsed_minutes, 0), ' +
+        'nozzle_temp = COALESCE(nozzle_temp, ?), bed_temp = COALESCE(bed_temp, ?) WHERE id = ?'
+      ).run(status, defaultNozzleTemp, defaultBedTemp, id)
+    } else if (status === 'VERIFY') {
+      db.prepare("UPDATE print_jobs SET status = ?, verify_status = COALESCE(verify_status, 'INSPECAO_PENDENTE') WHERE id = ?")
+        .run(status, id)
+    } else {
+      db.prepare('UPDATE print_jobs SET status = ? WHERE id = ?').run(status, id)
+    }
+
+    const dashboard = getDashboard(db)
+    db.exec('COMMIT')
+    return dashboard
+  } catch (error) { db.exec('ROLLBACK'); throw error }
+}
+
 export function deleteJob(db, id) {
   db.exec('BEGIN IMMEDIATE')
   try {

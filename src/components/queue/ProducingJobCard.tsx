@@ -1,5 +1,6 @@
 import { PrinterIcon } from '@/components/icons'
 import { DeleteButton } from './DeleteButton'
+import { dragJobProps } from '@/lib/dnd'
 import type { ProducingJob } from '@/types'
 
 export function ProducingJobCard({
@@ -10,7 +11,10 @@ export function ProducingJobCard({
   onDelete?: () => void
 }) {
   return (
-    <div className="relative rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+    <div
+      {...dragJobProps(job.id, 'PRODUCING')}
+      className="relative cursor-grab rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 active:cursor-grabbing"
+    >
       {onDelete ? (
         <DeleteButton onClick={onDelete} label={`Remover ${job.fileName}`} itemName={job.fileName} />
       ) : null}

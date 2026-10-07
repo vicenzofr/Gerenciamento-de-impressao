@@ -1,4 +1,4 @@
-import type { DashboardData, NewPrintInput } from '@/types'
+import type { DashboardData, JobStatus, NewPrintInput } from '@/types'
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   let response: Response
@@ -25,4 +25,12 @@ export async function addPrint(input: NewPrintInput) {
 
 export function removePrint(id: string) {
   return request<DashboardData>('/api/jobs/' + encodeURIComponent(id), { method: 'DELETE' })
+}
+
+export function moveJob(id: string, status: JobStatus) {
+  return request<DashboardData>('/api/jobs/' + encodeURIComponent(id), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
 }

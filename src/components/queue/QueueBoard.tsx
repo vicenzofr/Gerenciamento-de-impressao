@@ -3,7 +3,7 @@ import { QueueColumn } from './QueueColumn'
 import { QueuedJobCard } from './QueuedJobCard'
 import { ProducingJobCard } from './ProducingJobCard'
 import { VerifyJobCard } from './VerifyJobCard'
-import type { ProducingJob, QueuedJob, VerifyJob } from '@/types'
+import type { JobStatus, ProducingJob, QueuedJob, VerifyJob } from '@/types'
 
 interface QueueBoardProps {
   disabled?: boolean
@@ -14,6 +14,7 @@ interface QueueBoardProps {
   onDeleteQueued?: (id: string) => void
   onDeleteProducing?: (id: string) => void
   onDeleteVerify?: (id: string) => void
+  onMove?: (id: string, status: JobStatus) => void
 }
 
 export function QueueBoard({
@@ -25,6 +26,7 @@ export function QueueBoard({
   onDeleteQueued,
   onDeleteProducing,
   onDeleteVerify,
+  onMove,
 }: QueueBoardProps) {
   return (
     <section>
@@ -32,7 +34,8 @@ export function QueueBoard({
         <div>
           <h2 className="text-lg font-semibold text-white">Gerenciador de Filas</h2>
           <p className="mt-0.5 text-sm text-zinc-500">
-            Distribuição de trabalhos e monitoramento de estados físicos das peças
+            Distribuição de trabalhos e monitoramento de estados físicos das peças · arraste os
+            cards entre as colunas para mudar a etapa
           </p>
         </div>
         <button
@@ -47,7 +50,13 @@ export function QueueBoard({
       </div>
 
       <div inert={disabled} aria-busy={disabled} className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <QueueColumn title="Na Fila" count={queuedJobs.length} dot="blue">
+        <QueueColumn
+          title="Na Fila"
+          count={queuedJobs.length}
+          dot="blue"
+          status="QUEUED"
+          onDropJob={onMove ? (id) => onMove(id, 'QUEUED') : undefined}
+        >
           {queuedJobs.map((job) => (
             <QueuedJobCard
               key={job.id}
@@ -57,7 +66,13 @@ export function QueueBoard({
           ))}
         </QueueColumn>
 
-        <QueueColumn title="Em Produção" count={producingJobs.length} dot="orange">
+        <QueueColumn
+          title="Em Produção"
+          count={producingJobs.length}
+          dot="orange"
+          status="PRODUCING"
+          onDropJob={onMove ? (id) => onMove(id, 'PRODUCING') : undefined}
+        >
           {producingJobs.map((job) => (
             <ProducingJobCard
               key={job.id}
@@ -67,7 +82,13 @@ export function QueueBoard({
           ))}
         </QueueColumn>
 
-        <QueueColumn title="Verificar (Controle)" count={verifyJobs.length} dot="amber">
+        <QueueColumn
+          title="Verificar (Controle)"
+          count={verifyJobs.length}
+          dot="amber"
+          status="VERIFY"
+          onDropJob={onMove ? (id) => onMove(id, 'VERIFY') : undefined}
+        >
           {verifyJobs.map((job) => (
             <VerifyJobCard
               key={job.id}

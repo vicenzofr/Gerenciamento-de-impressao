@@ -1,6 +1,7 @@
 import { ClockIcon, WeightIcon } from '@/components/icons'
 import { PriorityBadge } from './PriorityBadge'
 import { DeleteButton } from './DeleteButton'
+import { dragJobProps } from '@/lib/dnd'
 import type { QueuedJob } from '@/types'
 
 export function QueuedJobCard({
@@ -11,7 +12,10 @@ export function QueuedJobCard({
   onDelete?: () => void
 }) {
   return (
-    <div className="relative rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+    <div
+      {...dragJobProps(job.id, 'QUEUED')}
+      className="relative cursor-grab rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 active:cursor-grabbing"
+    >
       {onDelete ? (
         <DeleteButton onClick={onDelete} label={`Remover ${job.fileName}`} itemName={job.fileName} />
       ) : null}

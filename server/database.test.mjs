@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, unlink, rmdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openDatabase, getDashboard, createJob, deleteJob } from './database.mjs'
+import { openDatabase, getDashboard, createJob, deleteJob, moveJob } from './database.mjs'
 import { createApp } from './app.mjs'
 
 const input = { fileName: 'suporte_camera.gcode', printer: 'Ender 3 Pro', hours: 1, minutes: 30 }
@@ -92,6 +92,36 @@ test('remover trabalhos das três etapas também remove suas reservas vinculadas
   assert.equal(db.prepare('SELECT count(*) AS n FROM timeline_blocks WHERE id = ?').get('b4').n, 1)
 })
 
+test('mover um trabalho entre etapas preenche valores padrão e preserva os já definidos', (t) => {
+  const db = memory(t)
+  const producing = moveJob(db, 'q1', 'PRODUCING')
+  const movedJob = producing.producingJobs.find((j) => j.id === 'q1')
+  assert.ok(movedJob)
+  assert.equal(movedJob.progress, 0)
+  assert.equal(movedJob.elapsedTime, '00h 00m decorridos')
+  assert.equal(movedJob.nozzleTemp, 200)
+  assert.equal(movedJob.bedTemp, 60)
+  // Reservas da linha do tempo não dependem do status.
+  assert.ok(producing.printerTimelines.flatMap((p) => p.blocks).some((b) => b.id === 'q1'))
+
+  const backToQueue = moveJob(db, 'p1', 'QUEUED')
+  assert.ok(backToQueue.queuedJobs.some((j) => j.id === 'p1'))
+  const producingAgain = moveJob(db, 'p1', 'PRODUCING')
+  // Progresso e temperaturas originais não são sobrescritos ao retomar.
+  assert.equal(producingAgain.producingJobs.find((j) => j.id === 'p1').progress, 78)
+
+  const verified = moveJob(db, 'q2', 'VERIFY')
+  assert.equal(verified.verifyJobs.find((j) => j.id === 'q2').verifyStatus, 'INSPECAO_PENDENTE')
+})
+
+test('mover rejeita status inválido, trabalho inexistente e impressora ausente', (t) => {
+  const db = memory(t)
+  assert.throws(() => moveJob(db, 'q1', 'EM_ANDAMENTO'), { status: 400 })
+  assert.throws(() => moveJob(db, 'inexistente', 'PRODUCING'), { status: 404 })
+  assert.throws(() => moveJob(db, 'q3', 'PRODUCING'), { status: 400 })
+  assert.deepEqual(getDashboard(db), getDashboard(db))
+})
+
 test('API HTTP integra leitura, cadastro, exclusão e respostas de erro', async (t) => {
   const db = memory(t)
   const app = createApp(db, { staticDir: join(tmpdir(), 'printing-missing-dist-' + Date.now()) })
@@ -105,6 +135,13 @@ test('API HTTP integra leitura, cadastro, exclusão e respostas de erro', async 
   assert.equal(response.status, 201)
   const created = await response.json()
   assert.equal(created.dashboard.queuedJobs.length, 4)
+  const patch = (id, body) => fetch(url + '/api/jobs/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const moved = await patch(created.id, { status: 'PRODUCING' })
+  assert.equal(moved.status, 200)
+  assert.ok((await moved.json()).producingJobs.some((j) => j.id === created.id))
+  assert.equal((await patch(created.id, { status: 'INVALIDO' })).status, 400)
+  assert.equal((await patch('inexistente', { status: 'PRODUCING' })).status, 404)
+
   const deleted = await fetch(url + '/api/jobs/' + created.id, { method: 'DELETE' })
   assert.equal(deleted.status, 200)
   assert.equal((await deleted.json()).queuedJobs.length, 3)
