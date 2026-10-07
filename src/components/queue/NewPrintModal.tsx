@@ -8,10 +8,11 @@ interface NewPrintModalProps {
   open: boolean
   printers: PrinterTimeline[]
   onClose: () => void
-  onSubmit: (input: NewPrintInput) => void
+  onSubmit: (input: NewPrintInput) => Promise<void>
+  saving: boolean
 }
 
-export function NewPrintModal({ open, printers, onClose, onSubmit }: NewPrintModalProps) {
+export function NewPrintModal({ open, printers, onClose, onSubmit, saving }: NewPrintModalProps) {
   const [fileName, setFileName] = useState('')
   const [printer, setPrinter] = useState(printers[0]?.name ?? '')
   const [hours, setHours] = useState('')
@@ -48,8 +49,10 @@ export function NewPrintModal({ open, printers, onClose, onSubmit }: NewPrintMod
 
   if (!open) return null
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (saving) return
+    setError(null)
 
     const h = Number(hours) || 0
     const m = Number(minutes) || 0
@@ -67,7 +70,11 @@ export function NewPrintModal({ open, printers, onClose, onSubmit }: NewPrintMod
       return
     }
 
-    onSubmit({ fileName: fileName.trim(), printer, hours: h, minutes: m, suggestedSlot })
+    try {
+      await onSubmit({ fileName: fileName.trim(), printer, hours: h, minutes: m, suggestedSlot })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível salvar a impressão.')
+    }
   }
 
   return (
@@ -86,17 +93,19 @@ export function NewPrintModal({ open, printers, onClose, onSubmit }: NewPrintMod
           Adicione um novo trabalho à fila de impressão
         </p>
 
-        <form className="mt-5 flex flex-col gap-4" onSubmit={handleSubmit}>
+        <form aria-busy={saving} className="mt-5 flex flex-col gap-4" onSubmit={handleSubmit}>
           <div>
             <label htmlFor="fileName" className="mb-1.5 block text-xs font-medium text-zinc-400">
               Nome do arquivo
             </label>
             <input
+              disabled={saving}
               id="fileName"
               type="text"
               value={fileName}
               onChange={(e) => setFileName(e.target.value)}
               placeholder="ex: suporte_camera.gcode"
+              maxLength={255}
               autoFocus
               className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-orange-500/50 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
             />
@@ -107,6 +116,7 @@ export function NewPrintModal({ open, printers, onClose, onSubmit }: NewPrintMod
               Impressora
             </label>
             <select
+              disabled={saving}
               id="printer"
               value={printer}
               onChange={(e) => setPrinter(e.target.value)}
@@ -126,6 +136,7 @@ export function NewPrintModal({ open, printers, onClose, onSubmit }: NewPrintMod
             </span>
             <div className="flex items-center gap-2">
               <input
+              disabled={saving}
                 type="number"
                 min={0}
                 max={99}
@@ -137,6 +148,7 @@ export function NewPrintModal({ open, printers, onClose, onSubmit }: NewPrintMod
               />
               <span className="text-sm text-zinc-500">h</span>
               <input
+              disabled={saving}
                 type="number"
                 min={0}
                 max={59}
@@ -169,10 +181,11 @@ export function NewPrintModal({ open, printers, onClose, onSubmit }: NewPrintMod
             </div>
           ) : null}
 
-          {error ? <p className="text-xs text-red-400">{error}</p> : null}
+          {error ? <p role="alert" className="text-xs text-red-400">{error}</p> : null}
 
           <div className="mt-2 flex items-center justify-end gap-3">
             <button
+              disabled={saving}
               type="button"
               onClick={onClose}
               className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-200"
@@ -180,10 +193,11 @@ export function NewPrintModal({ open, printers, onClose, onSubmit }: NewPrintMod
               Cancelar
             </button>
             <button
+              disabled={saving}
               type="submit"
               className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
             >
-              Adicionar à Fila
+              {saving ? 'Salvando…' : 'Adicionar à Fila'}
             </button>
           </div>
         </form>

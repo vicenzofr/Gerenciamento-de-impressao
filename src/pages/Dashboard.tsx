@@ -1,113 +1,88 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { QueueBoard } from '@/components/queue/QueueBoard'
 import { NewPrintModal } from '@/components/queue/NewPrintModal'
 import { Timeline } from '@/components/timeline/Timeline'
-import { BLOCK_COLOR_ORDER } from '@/components/timeline/timelineColors'
-import { formatHourDecimal } from '@/lib/time'
-import {
-  printerTimelines as initialPrinterTimelines,
-  printersOnline,
-  producingJobs as initialProducingJobs,
-  queuedJobs as initialQueuedJobs,
-  verifyJobs as initialVerifyJobs,
-} from '@/data/mockData'
-import type {
-  NewPrintInput,
-  PrinterTimeline,
-  ProducingJob,
-  QueuedJob,
-  VerifyJob,
-} from '@/types'
+import { addPrint, loadDashboard, removePrint } from '@/lib/api'
+import type { DashboardData, NewPrintInput } from '@/types'
 
 export function Dashboard() {
-  const [queuedJobs, setQueuedJobs] = useState<QueuedJob[]>(initialQueuedJobs)
-  const [producingJobs, setProducingJobs] = useState<ProducingJob[]>(initialProducingJobs)
-  const [verifyJobs, setVerifyJobs] = useState<VerifyJob[]>(initialVerifyJobs)
-  const [printerTimelines, setPrinterTimelines] =
-    useState<PrinterTimeline[]>(initialPrinterTimelines)
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const mutationPending = useRef(false)
+  const [reload, setReload] = useState(0)
 
-  function handleNewPrint({ fileName, printer, hours, minutes, suggestedSlot }: NewPrintInput) {
-    const id = crypto.randomUUID()
-    const estimatedTime = `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m`
+  useEffect(() => {
+    const controller = new AbortController()
+    setLoading(true)
+    setError(null)
+    loadDashboard(controller.signal)
+      .then((next) => { if (!controller.signal.aborted) setData(next) })
+      .catch((cause: Error) => { if (!controller.signal.aborted) setError(cause.message) })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [reload])
 
-    const newJob: QueuedJob = {
-      id,
-      fileName,
-      printer,
-      estimatedTime,
-      scheduledSlot: suggestedSlot
-        ? `${formatHourDecimal(suggestedSlot.startHour)} - ${formatHourDecimal(suggestedSlot.endHour)}`
-        : undefined,
-      priority: hours >= 6 ? 'AGENDADA' : 'MEDIA',
+  async function handleNewPrint(input: NewPrintInput) {
+    if (mutationPending.current) return
+    mutationPending.current = true
+    setSaving(true)
+    setError(null)
+    try {
+      setData(await addPrint(input))
+      setIsModalOpen(false)
+    } finally {
+      mutationPending.current = false
+      setSaving(false)
     }
-
-    setQueuedJobs((prev) => [...prev, newJob])
-
-    if (suggestedSlot) {
-      setPrinterTimelines((prev) =>
-        prev.map((p) =>
-          p.name === printer
-            ? {
-                ...p,
-                blocks: [
-                  ...p.blocks,
-                  {
-                    id,
-                    fileName,
-                    startHour: suggestedSlot.startHour,
-                    endHour: suggestedSlot.endHour,
-                    color: BLOCK_COLOR_ORDER[p.blocks.length % BLOCK_COLOR_ORDER.length],
-                  },
-                ],
-              }
-            : p,
-        ),
-      )
-    }
-
-    setIsModalOpen(false)
   }
 
-  function handleDeleteQueued(id: string) {
-    setQueuedJobs((prev) => prev.filter((job) => job.id !== id))
-    setPrinterTimelines((prev) =>
-      prev.map((p) => ({ ...p, blocks: p.blocks.filter((b) => b.id !== id) })),
-    )
-  }
-
-  function handleDeleteProducing(id: string) {
-    setProducingJobs((prev) => prev.filter((job) => job.id !== id))
-  }
-
-  function handleDeleteVerify(id: string) {
-    setVerifyJobs((prev) => prev.filter((job) => job.id !== id))
+  async function handleDelete(id: string) {
+    if (mutationPending.current) return
+    mutationPending.current = true
+    setSaving(true)
+    setError(null)
+    try { setData(await removePrint(id)) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível remover o trabalho.') }
+    finally { mutationPending.current = false; setSaving(false) }
   }
 
   return (
     <div className="min-h-svh bg-zinc-950">
-      <Header printersOnline={printersOnline} />
-
+      <Header printersOnline={data?.printersOnline ?? 0} />
       <main className="mx-auto flex max-w-[1400px] flex-col gap-8 px-6 py-6">
-        <QueueBoard
-          queuedJobs={queuedJobs}
-          producingJobs={producingJobs}
-          verifyJobs={verifyJobs}
-          onNewPrint={() => setIsModalOpen(true)}
-          onDeleteQueued={handleDeleteQueued}
-          onDeleteProducing={handleDeleteProducing}
-          onDeleteVerify={handleDeleteVerify}
-        />
-        <Timeline printers={printerTimelines} />
+        {loading && <p role="status" className="text-sm text-zinc-400">Carregando trabalhos…</p>}
+        {error && (
+          <div role="alert" className="flex items-center justify-between gap-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+            <p>{error}</p>
+            {!data && <button type="button" disabled={loading} onClick={() => setReload((value) => value + 1)} className="shrink-0 underline">Tentar novamente</button>}
+          </div>
+        )}
+        {data && <>
+          {saving && <p role="status" className="text-sm text-zinc-400">Salvando alterações…</p>}
+          <QueueBoard
+            queuedJobs={data.queuedJobs}
+            producingJobs={data.producingJobs}
+            verifyJobs={data.verifyJobs}
+            onNewPrint={() => setIsModalOpen(true)}
+            onDeleteQueued={handleDelete}
+            onDeleteProducing={handleDelete}
+            onDeleteVerify={handleDelete}
+            disabled={saving}
+          />
+          <Timeline printers={data.printerTimelines} />
+        </>}
       </main>
-
-      <NewPrintModal
+      {data && <NewPrintModal
         open={isModalOpen}
-        printers={printerTimelines}
-        onClose={() => setIsModalOpen(false)}
+        printers={data.printerTimelines}
+        onClose={() => { if (!mutationPending.current) setIsModalOpen(false) }}
         onSubmit={handleNewPrint}
-      />
+        saving={saving}
+      />}
     </div>
   )
 }

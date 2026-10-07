@@ -61,3 +61,11 @@ export interface PrinterTimeline {
   spec: string
   blocks: TimelineBlock[]
 }
+
+export interface DashboardData {
+  printersOnline: number
+  queuedJobs: QueuedJob[]
+  producingJobs: ProducingJob[]
+  verifyJobs: VerifyJob[]
+  printerTimelines: PrinterTimeline[]
+}

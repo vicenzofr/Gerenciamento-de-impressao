@@ -6,6 +6,7 @@ import { VerifyJobCard } from './VerifyJobCard'
 import type { ProducingJob, QueuedJob, VerifyJob } from '@/types'
 
 interface QueueBoardProps {
+  disabled?: boolean
   queuedJobs: QueuedJob[]
   producingJobs: ProducingJob[]
   verifyJobs: VerifyJob[]
@@ -20,6 +21,7 @@ export function QueueBoard({
   producingJobs,
   verifyJobs,
   onNewPrint,
+  disabled = false,
   onDeleteQueued,
   onDeleteProducing,
   onDeleteVerify,
@@ -36,6 +38,7 @@ export function QueueBoard({
         <button
           type="button"
           onClick={onNewPrint}
+          disabled={disabled}
           className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
         >
           <PlusIcon className="h-4 w-4" />
@@ -43,7 +46,7 @@ export function QueueBoard({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div inert={disabled} aria-busy={disabled} className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <QueueColumn title="Na Fila" count={queuedJobs.length} dot="blue">
           {queuedJobs.map((job) => (
             <QueuedJobCard
