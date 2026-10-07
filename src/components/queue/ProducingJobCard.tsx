@@ -1,0 +1,41 @@
+import { PrinterIcon } from '@/components/icons'
+import { DeleteButton } from './DeleteButton'
+import type { ProducingJob } from '@/types'
+
+export function ProducingJobCard({
+  job,
+  onDelete,
+}: {
+  job: ProducingJob
+  onDelete?: () => void
+}) {
+  return (
+    <div className="relative rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+      {onDelete ? (
+        <DeleteButton onClick={onDelete} label={`Remover ${job.fileName}`} itemName={job.fileName} />
+      ) : null}
+
+      <p className="truncate pr-6 text-sm font-medium text-zinc-100">{job.fileName}</p>
+      <p className="mt-0.5 flex items-center gap-1 text-xs text-orange-400">
+        <PrinterIcon className="h-3.5 w-3.5" />
+        {job.printerName}
+      </p>
+
+      <div className="mt-3 flex items-center justify-between text-xs text-zinc-400">
+        <span className="font-medium text-zinc-200">{job.progress}%</span>
+        <span>{job.elapsedTime}</span>
+      </div>
+      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+        <div
+          className="h-full rounded-full bg-orange-500"
+          style={{ width: `${job.progress}%` }}
+        />
+      </div>
+
+      <div className="mt-2 flex items-center gap-4 text-xs text-zinc-500">
+        <span>Bico: {job.nozzleTemp}°C</span>
+        <span>Mesa: {job.bedTemp}°C</span>
+      </div>
+    </div>
+  )
+}
