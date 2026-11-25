@@ -34,6 +34,8 @@ export interface ProducingJob {
   elapsedTime: string
   nozzleTemp: number
   bedTemp: number
+  durationMinutes: number
+  elapsedMinutes: number
 }
 
 export type VerifyStatus = 'INSPECAO_PENDENTE' | 'RETIRADA_PRONTA'
@@ -74,6 +76,7 @@ export interface DashboardData {
 
 /** Partial update sent to PATCH /api/jobs/:id. Only set fields are changed. */
 export interface JobEditInput {
+  status?: JobStatus
   fileName?: string
   printer?: string
   hours?: number

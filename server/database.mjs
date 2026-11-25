@@ -52,6 +52,7 @@ export function getDashboard(db) {
     producingJobs: jobs.filter((j) => j.status === 'PRODUCING').map((j) => ({
       id: j.id, fileName: j.file_name, printerName: j.printer_name, progress: j.progress,
       elapsedTime: duration(j.elapsed_minutes) + ' decorridos', nozzleTemp: j.nozzle_temp, bedTemp: j.bed_temp,
+      durationMinutes: j.duration_minutes, elapsedMinutes: j.elapsed_minutes,
     })),
     verifyJobs: jobs.filter((j) => j.status === 'VERIFY').map((j) => ({
       id: j.id, fileName: j.file_name, printerName: j.printer_name,

@@ -10,9 +10,17 @@ interface NewPrintModalProps {
   onClose: () => void
   onSubmit: (input: NewPrintInput) => Promise<void>
   saving: boolean
+  preselectedPrinter?: string
 }
 
-export function NewPrintModal({ open, printers, onClose, onSubmit, saving }: NewPrintModalProps) {
+export function NewPrintModal({
+  open,
+  printers,
+  onClose,
+  onSubmit,
+  saving,
+  preselectedPrinter,
+}: NewPrintModalProps) {
   const [fileName, setFileName] = useState('')
   const [printer, setPrinter] = useState(printers[0]?.name ?? '')
   const [hours, setHours] = useState('')
@@ -22,12 +30,12 @@ export function NewPrintModal({ open, printers, onClose, onSubmit, saving }: New
   useEffect(() => {
     if (open) {
       setFileName('')
-      setPrinter(printers[0]?.name ?? '')
+      setPrinter(preselectedPrinter ?? printers[0]?.name ?? '')
       setHours('')
       setMinutes('')
       setError(null)
     }
-  }, [open, printers])
+  }, [open, printers, preselectedPrinter])
 
   useEffect(() => {
     if (!open) return

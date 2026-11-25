@@ -4,7 +4,13 @@ import type { PrinterTimeline } from '@/types'
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const LABEL_WIDTH = 160
 
-export function TimelineGrid({ printers }: { printers: PrinterTimeline[] }) {
+export function TimelineGrid({
+  printers,
+  liveJobIds,
+}: {
+  printers: PrinterTimeline[]
+  liveJobIds?: Set<string>
+}) {
   const gridWidth = HOURS.length * HOUR_WIDTH
 
   return (
@@ -50,7 +56,7 @@ export function TimelineGrid({ printers }: { printers: PrinterTimeline[] }) {
               </div>
 
               {printer.blocks.map((block) => (
-                <TimelineJobBlock key={block.id} block={block} />
+                <TimelineJobBlock key={block.id} block={block} isLive={liveJobIds?.has(block.id)} />
               ))}
             </div>
           </div>

@@ -2,7 +2,13 @@ import { InfoIcon } from '@/components/icons'
 import { TimelineGrid } from './TimelineGrid'
 import type { PrinterTimeline } from '@/types'
 
-export function Timeline({ printers }: { printers: PrinterTimeline[] }) {
+export function Timeline({
+  printers,
+  liveJobIds,
+}: {
+  printers: PrinterTimeline[]
+  liveJobIds?: Set<string>
+}) {
   return (
     <section>
       <div className="mb-4">
@@ -23,7 +29,7 @@ export function Timeline({ printers }: { printers: PrinterTimeline[] }) {
         </p>
       </div>
 
-      <TimelineGrid printers={printers} />
+      <TimelineGrid printers={printers} liveJobIds={liveJobIds} />
     </section>
   )
 }

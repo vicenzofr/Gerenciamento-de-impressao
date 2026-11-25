@@ -1,21 +1,42 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { QueueBoard } from '@/components/queue/QueueBoard'
 import { NewPrintModal } from '@/components/queue/NewPrintModal'
 import { EditJobModal, type EditTarget } from '@/components/queue/EditJobModal'
 import { Timeline } from '@/components/timeline/Timeline'
+import { NotificationStack, type PrintCompleteNotification } from '@/components/notifications/NotificationStack'
 import { addPrint, editJob, loadDashboard, moveJob, removePrint } from '@/lib/api'
 import type { DashboardData, JobEditInput, JobStatus, NewPrintInput } from '@/types'
+
+// Demo acceleration: how many real seconds stand for one printed minute.
+// At 0.2 a job with ~150 simulated minutes left finishes in ~30s instead of 2.5h.
+const SIM_SECONDS_PER_MINUTE = 0.2
+const TICK_MS = 1000
+const NOTIFICATION_LIFETIME_MS = 20000
+
+interface ProgressTrack {
+  startElapsedMinutes: number
+  startTimestampMs: number
+  durationMinutes: number
+  printerName: string
+  fileName: string
+}
 
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [preselectedPrinter, setPreselectedPrinter] = useState<string | undefined>(undefined)
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null)
   const [saving, setSaving] = useState(false)
   const mutationPending = useRef(false)
   const [reload, setReload] = useState(0)
+
+  const [displayProgress, setDisplayProgress] = useState<Map<string, number>>(new Map())
+  const [notifications, setNotifications] = useState<PrintCompleteNotification[]>([])
+  const tracksRef = useRef<Map<string, ProgressTrack>>(new Map())
+  const completingRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     const controller = new AbortController()
@@ -27,6 +48,72 @@ export function Dashboard() {
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [reload])
+
+  // Re-derive the live tracks whenever fresh data comes in. Untouched jobs
+  // keep the exact same starting point (only the stopwatch's "now" moves),
+  // so this never causes a visible jump — it only reconciles jobs whose
+  // server-side progress actually changed (e.g. our own completion write).
+  useEffect(() => {
+    if (!data) return
+    const now = Date.now()
+    const next = new Map<string, ProgressTrack>()
+    for (const job of data.producingJobs) {
+      next.set(job.id, {
+        startElapsedMinutes: job.elapsedMinutes,
+        startTimestampMs: now,
+        durationMinutes: job.durationMinutes,
+        printerName: job.printerName,
+        fileName: job.fileName,
+      })
+    }
+    tracksRef.current = next
+    for (const id of completingRef.current) {
+      if (!next.has(id)) completingRef.current.delete(id)
+    }
+  }, [data])
+
+  async function completeJob(id: string, printerName: string, fileName: string) {
+    try {
+      const next = await editJob(id, { progress: 100, status: 'VERIFY' })
+      setData(next)
+      const notificationId = crypto.randomUUID()
+      setNotifications((prev) => [...prev, { id: notificationId, printerName, fileName }])
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
+      }, NOTIFICATION_LIFETIME_MS)
+    } catch {
+      completingRef.current.delete(id)
+    }
+  }
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now()
+      const updates = new Map<string, number>()
+      for (const [id, track] of tracksRef.current) {
+        const simulatedMinutes =
+          track.startElapsedMinutes + (now - track.startTimestampMs) / 1000 / SIM_SECONDS_PER_MINUTE
+        const pct = Math.min(100, (simulatedMinutes / track.durationMinutes) * 100)
+        updates.set(id, pct)
+        if (pct >= 100 && !completingRef.current.has(id) && !mutationPending.current) {
+          completingRef.current.add(id)
+          completeJob(id, track.printerName, track.fileName)
+        }
+      }
+      setDisplayProgress(updates)
+    }, TICK_MS)
+    return () => clearInterval(interval)
+  }, [])
+
+  const liveJobIds = useMemo(() => new Set(data?.producingJobs.map((j) => j.id) ?? []), [data])
+
+  const producingJobsWithLiveProgress = useMemo(() => {
+    if (!data) return []
+    return data.producingJobs.map((job) => {
+      const live = displayProgress.get(job.id)
+      return live === undefined ? job : { ...job, progress: Math.round(live) }
+    })
+  }, [data, displayProgress])
 
   async function handleNewPrint(input: NewPrintInput) {
     if (mutationPending.current) return
@@ -76,6 +163,11 @@ export function Dashboard() {
     }
   }
 
+  function openNewPrintModal(printer?: string) {
+    setPreselectedPrinter(printer)
+    setIsModalOpen(true)
+  }
+
   return (
     <div className="min-h-svh bg-zinc-950">
       <Header printersOnline={data?.printersOnline ?? 0} />
@@ -91,9 +183,9 @@ export function Dashboard() {
           {saving && <p role="status" className="text-sm text-zinc-400">Salvando alterações…</p>}
           <QueueBoard
             queuedJobs={data.queuedJobs}
-            producingJobs={data.producingJobs}
+            producingJobs={producingJobsWithLiveProgress}
             verifyJobs={data.verifyJobs}
-            onNewPrint={() => setIsModalOpen(true)}
+            onNewPrint={() => openNewPrintModal()}
             onDeleteQueued={handleDelete}
             onDeleteProducing={handleDelete}
             onDeleteVerify={handleDelete}
@@ -103,12 +195,13 @@ export function Dashboard() {
             onEditVerify={(job) => setEditTarget({ kind: 'VERIFY', job })}
             disabled={saving}
           />
-          <Timeline printers={data.printerTimelines} />
+          <Timeline printers={data.printerTimelines} liveJobIds={liveJobIds} />
         </>}
       </main>
       {data && <NewPrintModal
         open={isModalOpen}
         printers={data.printerTimelines}
+        preselectedPrinter={preselectedPrinter}
         onClose={() => { if (!mutationPending.current) setIsModalOpen(false) }}
         onSubmit={handleNewPrint}
         saving={saving}
@@ -120,6 +213,11 @@ export function Dashboard() {
         onSubmit={handleEdit}
         saving={saving}
       />}
+      <NotificationStack
+        notifications={notifications}
+        onDismiss={(id) => setNotifications((prev) => prev.filter((n) => n.id !== id))}
+        onNewPrint={(printer) => openNewPrintModal(printer)}
+      />
     </div>
   )
 }
