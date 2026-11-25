@@ -6,10 +6,10 @@ const LABEL_WIDTH = 160
 
 export function TimelineGrid({
   printers,
-  liveJobIds,
+  liveProgress,
 }: {
   printers: PrinterTimeline[]
-  liveJobIds?: Set<string>
+  liveProgress?: Map<string, number>
 }) {
   const gridWidth = HOURS.length * HOUR_WIDTH
 
@@ -56,7 +56,12 @@ export function TimelineGrid({
               </div>
 
               {printer.blocks.map((block) => (
-                <TimelineJobBlock key={block.id} block={block} isLive={liveJobIds?.has(block.id)} />
+                <TimelineJobBlock
+                  key={block.id}
+                  block={block}
+                  isLive={liveProgress?.has(block.id)}
+                  progress={liveProgress?.get(block.id)}
+                />
               ))}
             </div>
           </div>

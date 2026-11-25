@@ -8,9 +8,9 @@ import { NotificationStack, type PrintCompleteNotification } from '@/components/
 import { addPrint, editJob, loadDashboard, moveJob, removePrint } from '@/lib/api'
 import type { DashboardData, JobEditInput, JobStatus, NewPrintInput } from '@/types'
 
-// Demo acceleration: how many real seconds stand for one printed minute.
-// At 0.2 a job with ~150 simulated minutes left finishes in ~30s instead of 2.5h.
-const SIM_SECONDS_PER_MINUTE = 0.2
+// Real time: 1 printed minute takes exactly 1 real minute. If a job has
+// 2h left, its bar keeps loading live for 2h until it actually completes.
+const MS_PER_PRINTED_MINUTE = 60000
 const TICK_MS = 1000
 const NOTIFICATION_LIFETIME_MS = 20000
 
@@ -91,9 +91,9 @@ export function Dashboard() {
       const now = Date.now()
       const updates = new Map<string, number>()
       for (const [id, track] of tracksRef.current) {
-        const simulatedMinutes =
-          track.startElapsedMinutes + (now - track.startTimestampMs) / 1000 / SIM_SECONDS_PER_MINUTE
-        const pct = Math.min(100, (simulatedMinutes / track.durationMinutes) * 100)
+        const elapsedMinutes =
+          track.startElapsedMinutes + (now - track.startTimestampMs) / MS_PER_PRINTED_MINUTE
+        const pct = Math.min(100, (elapsedMinutes / track.durationMinutes) * 100)
         updates.set(id, pct)
         if (pct >= 100 && !completingRef.current.has(id) && !mutationPending.current) {
           completingRef.current.add(id)
@@ -105,15 +105,21 @@ export function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  const liveJobIds = useMemo(() => new Set(data?.producingJobs.map((j) => j.id) ?? []), [data])
+  const liveProgress = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const job of data?.producingJobs ?? []) {
+      map.set(job.id, displayProgress.get(job.id) ?? job.progress)
+    }
+    return map
+  }, [data, displayProgress])
 
   const producingJobsWithLiveProgress = useMemo(() => {
     if (!data) return []
     return data.producingJobs.map((job) => {
-      const live = displayProgress.get(job.id)
+      const live = liveProgress.get(job.id)
       return live === undefined ? job : { ...job, progress: Math.round(live) }
     })
-  }, [data, displayProgress])
+  }, [data, liveProgress])
 
   async function handleNewPrint(input: NewPrintInput) {
     if (mutationPending.current) return
@@ -195,7 +201,7 @@ export function Dashboard() {
             onEditVerify={(job) => setEditTarget({ kind: 'VERIFY', job })}
             disabled={saving}
           />
-          <Timeline printers={data.printerTimelines} liveJobIds={liveJobIds} />
+          <Timeline printers={data.printerTimelines} liveProgress={liveProgress} />
         </>}
       </main>
       {data && <NewPrintModal

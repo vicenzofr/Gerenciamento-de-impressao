@@ -4,10 +4,10 @@ import type { PrinterTimeline } from '@/types'
 
 export function Timeline({
   printers,
-  liveJobIds,
+  liveProgress,
 }: {
   printers: PrinterTimeline[]
-  liveJobIds?: Set<string>
+  liveProgress?: Map<string, number>
 }) {
   return (
     <section>
@@ -29,7 +29,7 @@ export function Timeline({
         </p>
       </div>
 
-      <TimelineGrid printers={printers} liveJobIds={liveJobIds} />
+      <TimelineGrid printers={printers} liveProgress={liveProgress} />
     </section>
   )
 }
