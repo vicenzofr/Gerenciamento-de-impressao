@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, unlink, rmdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openDatabase, getDashboard, createJob, deleteJob, moveJob, updateJob } from './database.mjs'
+import { openDatabase, getDashboard, createJob, deleteJob, moveJob, updateJob, listPrinters, createPrinter } from './database.mjs'
 import { createApp } from './app.mjs'
 
 const input = { fileName: 'suporte_camera.gcode', printer: 'Ender 3 Pro', hours: 1, minutes: 30 }
@@ -179,6 +179,35 @@ test('editar rejeita valores inválidos sem alterar o banco', (t) => {
   assert.deepEqual(getDashboard(db), before)
 })
 
+test('listar impressoras retorna as três cadastradas, todas online', (t) => {
+  const db = memory(t)
+  const printers = listPrinters(db)
+  assert.equal(printers.length, 3)
+  assert.deepEqual(printers.map((p) => p.name), ['Ender 3 Pro', 'Ender 3 V2', 'CR-10 Max'])
+  assert.ok(printers.every((p) => p.online === true))
+})
+
+test('cadastrar impressora adiciona ela à lista e à agenda do dia', (t) => {
+  const db = memory(t)
+  const created = createPrinter(db, { name: 'Bambu Lab X1 Carbon', spec: 'FDM • 256x256x256mm' })
+  assert.ok(created.id)
+  assert.equal(created.name, 'Bambu Lab X1 Carbon')
+  assert.equal(created.online, true)
+  assert.equal(listPrinters(db).length, 4)
+  const timeline = getDashboard(db).printerTimelines.find((p) => p.name === 'Bambu Lab X1 Carbon')
+  assert.ok(timeline)
+  assert.deepEqual(timeline.blocks, [])
+})
+
+test('cadastrar impressora rejeita nome duplicado ou dados vazios', (t) => {
+  const db = memory(t)
+  assert.throws(() => createPrinter(db, { name: 'Ender 3 Pro', spec: 'FDM • 220x220mm' }), { status: 409 })
+  assert.throws(() => createPrinter(db, { name: '  ', spec: 'FDM • 220x220mm' }), { status: 400 })
+  assert.throws(() => createPrinter(db, { name: 'Nova Impressora', spec: '' }), { status: 400 })
+  assert.throws(() => createPrinter(db, null), { status: 400 })
+  assert.equal(listPrinters(db).length, 3)
+})
+
 test('API HTTP integra leitura, cadastro, exclusão e respostas de erro', async (t) => {
   const db = memory(t)
   const app = createApp(db, { staticDir: join(tmpdir(), 'printing-missing-dist-' + Date.now()) })
@@ -214,4 +243,15 @@ test('API HTTP integra leitura, cadastro, exclusão e respostas de erro', async 
   assert.equal((await post(JSON.stringify({ fileName: 'a'.repeat(17000) }))).status, 413)
   assert.equal((await fetch(url + '/api/missing')).status, 404)
   assert.equal((await fetch(url + '/')).status, 404)
+
+  assert.equal((await fetch(url + '/api/printers').then((r) => r.json())).length, 3)
+  const printerResponse = await fetch(url + '/api/printers', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Prusa MK4', spec: 'FDM • 250x210x220mm' }),
+  })
+  assert.equal(printerResponse.status, 201)
+  assert.equal((await fetch(url + '/api/printers').then((r) => r.json())).length, 4)
+  assert.equal((await fetch(url + '/api/printers', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '', spec: 'x' }),
+  })).status, 400)
 })

@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { resolve, extname, sep } from 'node:path'
-import { ApiError, createJob, deleteJob, getDashboard, updateJob } from './database.mjs'
+import { ApiError, createJob, createPrinter, deleteJob, getDashboard, listPrinters, updateJob } from './database.mjs'
 
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' }
 function json(res, status, body) {
@@ -31,6 +31,8 @@ export function createApp(db, { staticDir = resolve('dist') } = {}) {
         return json(res, 200, { status: 'ok', database: 'sqlite' })
       }
       if (url.pathname === '/api/dashboard' && req.method === 'GET') return json(res, 200, getDashboard(db))
+      if (url.pathname === '/api/printers' && req.method === 'GET') return json(res, 200, listPrinters(db))
+      if (url.pathname === '/api/printers' && req.method === 'POST') return json(res, 201, createPrinter(db, await readJson(req)))
       if (url.pathname === '/api/jobs' && req.method === 'POST') return json(res, 201, createJob(db, await readJson(req)))
       const match = /^\/api\/jobs\/([^/]+)$/.exec(url.pathname)
       if (match && req.method === 'DELETE') return json(res, 200, deleteJob(db, decodeURIComponent(match[1])))

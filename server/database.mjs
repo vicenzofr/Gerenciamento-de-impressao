@@ -270,3 +270,26 @@ export function deleteJob(db, id) {
     return dashboard
   } catch (error) { db.exec('ROLLBACK'); throw error }
 }
+
+export function listPrinters(db) {
+  return db.prepare('SELECT id, name, spec, online FROM printers ORDER BY rowid').all()
+    .map((p) => ({ id: p.id, name: p.name, spec: p.spec, online: p.online === 1 }))
+}
+
+export function createPrinter(db, input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(400, 'Dados inválidos.')
+  const name = typeof input.name === 'string' ? input.name.trim() : ''
+  const spec = typeof input.spec === 'string' ? input.spec.trim() : ''
+  if (!name || name.length > 255) throw new ApiError(400, 'Informe um nome de impressora de até 255 caracteres.')
+  if (!spec || spec.length > 255) throw new ApiError(400, 'Informe as especificações da impressora.')
+
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const existing = db.prepare('SELECT id FROM printers WHERE name = ?').get(name)
+    if (existing) throw new ApiError(409, 'Já existe uma impressora com esse nome.')
+    const id = randomUUID()
+    db.prepare('INSERT INTO printers (id, name, spec, online) VALUES (?, ?, ?, 1)').run(id, name, spec)
+    db.exec('COMMIT')
+    return { id, name, spec, online: true }
+  } catch (error) { db.exec('ROLLBACK'); throw error }
+}

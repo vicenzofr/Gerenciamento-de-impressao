@@ -91,3 +91,15 @@ export interface JobEditInput {
   bedTemp?: number
   verifyStatus?: VerifyStatus
 }
+
+export interface Printer {
+  id: string
+  name: string
+  spec: string
+  online: boolean
+}
+
+export interface NewPrinterInput {
+  name: string
+  spec: string
+}

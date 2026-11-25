@@ -1,10 +1,19 @@
 import { CubeIcon } from '@/components/icons'
 
+export type DashboardTab = 'QUEUE' | 'PRINTERS'
+
+const TABS: { id: DashboardTab; label: string }[] = [
+  { id: 'QUEUE', label: 'Filas de Impressão' },
+  { id: 'PRINTERS', label: 'Impressoras' },
+]
+
 interface HeaderProps {
   printersOnline: number
+  activeTab: DashboardTab
+  onTabChange: (tab: DashboardTab) => void
 }
 
-export function Header({ printersOnline }: HeaderProps) {
+export function Header({ printersOnline, activeTab, onTabChange }: HeaderProps) {
   return (
     <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/80 px-6 py-4">
       <div className="flex items-center gap-2">
@@ -16,10 +25,21 @@ export function Header({ printersOnline }: HeaderProps) {
       </div>
 
       <nav className="flex items-center gap-8">
-        <span className="relative pb-1 text-sm font-medium text-orange-500">
-          Filas de Impressão
-          <span className="absolute -bottom-[17px] left-0 h-0.5 w-full bg-orange-500" />
-        </span>
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onTabChange(tab.id)}
+            className={`relative pb-1 text-sm font-medium transition-colors ${
+              activeTab === tab.id ? 'text-orange-500' : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {tab.label}
+            {activeTab === tab.id && (
+              <span className="absolute -bottom-[17px] left-0 h-0.5 w-full bg-orange-500" />
+            )}
+          </button>
+        ))}
       </nav>
 
       <div className="flex items-center gap-2 text-sm text-zinc-300">

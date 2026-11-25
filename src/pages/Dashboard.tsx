@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Header } from '@/components/layout/Header'
+import { Header, type DashboardTab } from '@/components/layout/Header'
 import { QueueBoard } from '@/components/queue/QueueBoard'
 import { NewPrintModal } from '@/components/queue/NewPrintModal'
 import { EditJobModal, type EditTarget } from '@/components/queue/EditJobModal'
 import { Timeline } from '@/components/timeline/Timeline'
 import { NotificationStack, type PrintCompleteNotification } from '@/components/notifications/NotificationStack'
+import { PrintersPage } from '@/pages/PrintersPage'
 import { addPrint, editJob, loadDashboard, moveJob, removePrint } from '@/lib/api'
 import type { DashboardData, JobEditInput, JobStatus, NewPrintInput } from '@/types'
 
@@ -23,6 +24,7 @@ interface ProgressTrack {
 }
 
 export function Dashboard() {
+  const [activeTab, setActiveTab] = useState<DashboardTab>('QUEUE')
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -176,33 +178,43 @@ export function Dashboard() {
 
   return (
     <div className="min-h-svh bg-zinc-950">
-      <Header printersOnline={data?.printersOnline ?? 0} />
+      <Header
+        printersOnline={data?.printersOnline ?? 0}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
       <main className="mx-auto flex max-w-[1400px] flex-col gap-8 px-6 py-6">
-        {loading && <p role="status" className="text-sm text-zinc-400">Carregando trabalhos…</p>}
-        {error && (
-          <div role="alert" className="flex items-center justify-between gap-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-            <p>{error}</p>
-            {!data && <button type="button" disabled={loading} onClick={() => setReload((value) => value + 1)} className="shrink-0 underline">Tentar novamente</button>}
-          </div>
+        {activeTab === 'QUEUE' ? (
+          <>
+            {loading && <p role="status" className="text-sm text-zinc-400">Carregando trabalhos…</p>}
+            {error && (
+              <div role="alert" className="flex items-center justify-between gap-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                <p>{error}</p>
+                {!data && <button type="button" disabled={loading} onClick={() => setReload((value) => value + 1)} className="shrink-0 underline">Tentar novamente</button>}
+              </div>
+            )}
+            {data && <>
+              {saving && <p role="status" className="text-sm text-zinc-400">Salvando alterações…</p>}
+              <QueueBoard
+                queuedJobs={data.queuedJobs}
+                producingJobs={producingJobsWithLiveProgress}
+                verifyJobs={data.verifyJobs}
+                onNewPrint={() => openNewPrintModal()}
+                onDeleteQueued={handleDelete}
+                onDeleteProducing={handleDelete}
+                onDeleteVerify={handleDelete}
+                onMove={handleMove}
+                onEditQueued={(job) => setEditTarget({ kind: 'QUEUED', job })}
+                onEditProducing={(job) => setEditTarget({ kind: 'PRODUCING', job })}
+                onEditVerify={(job) => setEditTarget({ kind: 'VERIFY', job })}
+                disabled={saving}
+              />
+              <Timeline printers={data.printerTimelines} liveProgress={liveProgress} />
+            </>}
+          </>
+        ) : (
+          <PrintersPage onPrinterAdded={() => setReload((value) => value + 1)} />
         )}
-        {data && <>
-          {saving && <p role="status" className="text-sm text-zinc-400">Salvando alterações…</p>}
-          <QueueBoard
-            queuedJobs={data.queuedJobs}
-            producingJobs={producingJobsWithLiveProgress}
-            verifyJobs={data.verifyJobs}
-            onNewPrint={() => openNewPrintModal()}
-            onDeleteQueued={handleDelete}
-            onDeleteProducing={handleDelete}
-            onDeleteVerify={handleDelete}
-            onMove={handleMove}
-            onEditQueued={(job) => setEditTarget({ kind: 'QUEUED', job })}
-            onEditProducing={(job) => setEditTarget({ kind: 'PRODUCING', job })}
-            onEditVerify={(job) => setEditTarget({ kind: 'VERIFY', job })}
-            disabled={saving}
-          />
-          <Timeline printers={data.printerTimelines} liveProgress={liveProgress} />
-        </>}
       </main>
       {data && <NewPrintModal
         open={isModalOpen}
